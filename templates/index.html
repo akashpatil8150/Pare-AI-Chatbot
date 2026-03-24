@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pare AI Chatbot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-section">
+                <div class="logo">
+                    <i class="fas fa-building"></i>
+                    <h1>Pare AI</h1>
+                </div>
+                <p class="tagline">Interior & Exterior Solutions</p>
+            </div>
+
+            <div class="quick-links">
+                <h3>Our Products</h3>
+                <button class="product-link" onclick="askAboutProduct('INNOV+')">
+                    <i class="fas fa-water"></i>
+                    <span>INNOV+ Series</span>
+                </button>
+                <button class="product-link" onclick="askAboutProduct('INNOV2+')">
+                    <i class="fas fa-cube"></i>
+                    <span>INNOV2+ Series</span>
+                </button>
+                <button class="product-link" onclick="askAboutProduct('DURA+')">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>DURA+ Series</span>
+                </button>
+                <button class="product-link" onclick="askAboutProduct('EASY+')">
+                    <i class="fas fa-tools"></i>
+                    <span>EASY+ Series</span>
+                </button>
+                <button class="product-link" onclick="askAboutProduct('LUXE')">
+                    <i class="fas fa-gem"></i>
+                    <span>LUXE Series</span>
+                </button>
+                <button class="product-link" onclick="askAboutProduct('Acoustic')">
+                    <i class="fas fa-volume-mute"></i>
+                    <span>Acoustic Series</span>
+                </button>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn-primary" onclick="showAppointmentForm()">
+                    <i class="fas fa-calendar-plus"></i>
+                    Book Appointment
+                </button>
+                <button class="btn-secondary" onclick="showAppointments()">
+                    <i class="fas fa-list"></i>
+                    View Appointments
+                </button>
+            </div>
+        </aside>
+
+        <!-- Chat Area -->
+        <main class="chat-container">
+            <div class="chat-header">
+                <div class="header-info">
+                    <i class="fas fa-robot"></i>
+                    <div>
+                        <h2>Pare AI Assistant</h2>
+                        <span class="status">Online</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot-message">
+                    <div class="message-content">
+                        <p>Hello! 👋 Welcome to Pare AI Assistant. I'm here to help you with:</p>
+                        <ul>
+                            <li>Product information and recommendations</li>
+                            <li>Booking appointments</li>
+                            <li>Managing your appointments</li>
+                        </ul>
+                        <p>How can I assist you today?</p>
+                    </div>
+                    <span class="message-time">Just now</span>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+                    <button onclick="sendMessage()" class="send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Appointment Form Modal -->
+    <div id="appointmentModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2><i class="fas fa-calendar-check"></i> Book Appointment</h2>
+            <form id="appointmentForm" onsubmit="submitAppointment(event)">
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="address">Address</label>
+                    <textarea id="address" rows="3" required></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="date">Date</label>
+                        <input type="date" id="date" required onchange="updateTimeSlots()">
+                    </div>
+                    <div class="form-group">
+                        <label for="time">
+                            Time Slot 
+                            <span id="slotsRefreshIndicator" style="color: #10b981; font-size: 0.75rem; display: none;">
+                                <i class="fas fa-sync-alt fa-spin"></i> Updating...
+                            </span>
+                        </label>
+                        <select id="time" required>
+                            <option value="">Select time slot</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary">
+                    <i class="fas fa-check"></i> Confirm Booking
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Appointments List Modal -->
+    <div id="appointmentsModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAppointmentsModal()">&times;</span>
+            <h2><i class="fas fa-calendar-alt"></i> Your Appointments</h2>
+            <div id="appointmentsList"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
