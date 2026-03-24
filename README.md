@@ -465,11 +465,6 @@ Contributions are welcome! Please:
 
 This project is licensed under the MIT License.
 
-## Support 💬
-
-For issues or questions:
-- Open an issue on GitHub
-- Contact: [your-email@example.com]
 
 ## Acknowledgments 🙏
 
@@ -479,5 +474,4 @@ For issues or questions:
 - Pare for product information
 
 ---
-
-**Made with ❤️ for Pare Interior & Exterior Solutions**
+**project purpose only**
