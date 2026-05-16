@@ -7,6 +7,18 @@ from typing import Dict, List, Any, Optional
 import google.generativeai as genai
 from dotenv import load_dotenv
 import os
+import logging
+import sys
+
+# Configure logging for production
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -14,16 +26,25 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
+# Disable Flask debug mode in production
+app.config['DEBUG'] = False
+app.config['PROPAGATE_EXCEPTIONS'] = True
+
 # Configure Gemini API
 api_key = os.getenv('GEMINI_API_KEY')
 if not api_key:
-    raise ValueError("GEMINI_API_KEY not found! Please set it in .env file")
+    logger.error("GEMINI_API_KEY not found in environment variables!")
+    raise ValueError("GEMINI_API_KEY not found! Please set it in environment variables")
 
-# Debug: Print first/last few characters (for verification without exposing full key)
-print(f"API Key loaded: {api_key[:10]}...{api_key[-4:]}")
-print(f"API Key length: {len(api_key)}")
+# Log API key status (without exposing the key)
+logger.info(f"API Key loaded successfully (length: {len(api_key)} characters)")
 
-genai.configure(api_key=api_key)
+try:
+    genai.configure(api_key=api_key)
+    logger.info("Gemini API configured successfully")
+except Exception as e:
+    logger.error(f"Failed to configure Gemini API: {str(e)}")
+    raise
 
 # Global Data Storage
 APPOINTMENTS: List[Dict] = []
@@ -197,6 +218,7 @@ def process_tool_call(response_text: str) -> Optional[Dict[str, Any]]:
 def chat(user_input: str) -> Dict[str, Any]:
     """Main chat function with optimized timeout"""
     try:
+        logger.info(f"Processing chat request: {user_input[:50]}...")
         full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {user_input}\n\nAssistant:"
         
         # Single attempt with very short timeout for speed
@@ -207,6 +229,7 @@ def chat(user_input: str) -> Dict[str, Any]:
         
         # Better response handling
         if not response.candidates:
+            logger.warning("No response candidates generated")
             return {
                 "type": "error",
                 "content": "No response generated. Please try again.",
@@ -217,6 +240,7 @@ def chat(user_input: str) -> Dict[str, Any]:
         
         # Check if response was blocked or empty
         if not candidate.content or not candidate.content.parts:
+            logger.warning("Response blocked or empty")
             return {
                 "type": "error",
                 "content": "Response blocked or empty. Please rephrase your question.",
@@ -225,10 +249,12 @@ def chat(user_input: str) -> Dict[str, Any]:
         
         response_text = candidate.content.parts[0].text.strip()
         processed_response = process_tool_call(response_text)
+        logger.info("Chat request processed successfully")
         return processed_response
                 
     except Exception as e:
         error_msg = str(e)
+        logger.error(f"Chat error: {error_msg}")
         if "429" in error_msg or "quota" in error_msg.lower():
             return {
                 "type": "error",
@@ -251,6 +277,7 @@ def chat(user_input: str) -> Dict[str, Any]:
 def chat_stream(user_input: str):
     """Streaming chat function for real-time responses"""
     try:
+        logger.info(f"Processing streaming chat request: {user_input[:50]}...")
         full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {user_input}\n\nAssistant:"
         
         response = model.generate_content(
@@ -271,6 +298,7 @@ def chat_stream(user_input: str):
         if accumulated_text:
             processed = process_tool_call(accumulated_text)
             yield f"data: {json.dumps({'done': True, 'result': processed})}\n\n"
+            logger.info("Streaming chat request completed successfully")
         else:
             error_response = {
                 "type": "error",
@@ -278,9 +306,11 @@ def chat_stream(user_input: str):
                 "language": "en"
             }
             yield f"data: {json.dumps({'done': True, 'result': error_response})}\n\n"
+            logger.warning("Streaming chat generated no response")
                 
     except Exception as e:
         error_msg = str(e)
+        logger.error(f"Streaming chat error: {error_msg}")
         if "429" in error_msg or "quota" in error_msg.lower():
             error_response = {
                 "type": "error",
@@ -304,48 +334,99 @@ def chat_stream(user_input: str):
 # Routes
 @app.route('/')
 def index():
+    logger.info("Index page accessed")
     return render_template('index.html')
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Render"""
+    return jsonify({
+        "status": "healthy",
+        "service": "Pare AI Chatbot",
+        "timestamp": datetime.datetime.now().isoformat()
+    }), 200
 
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
-    data = request.json
-    user_message = data.get('message', '')
-    use_streaming = data.get('stream', False)
-    
-    if use_streaming:
-        return Response(
-            stream_with_context(chat_stream(user_message)),
-            mimetype='text/event-stream'
-        )
-    else:
-        response = chat(user_message)
-        return jsonify(response)
+    try:
+        data = request.json
+        user_message = data.get('message', '')
+        use_streaming = data.get('stream', False)
+        
+        if not user_message:
+            return jsonify({"type": "error", "content": "Message is required"}), 400
+        
+        if use_streaming:
+            return Response(
+                stream_with_context(chat_stream(user_message)),
+                mimetype='text/event-stream'
+            )
+        else:
+            response = chat(user_message)
+            return jsonify(response)
+    except Exception as e:
+        logger.error(f"API chat error: {str(e)}")
+        return jsonify({
+            "type": "error",
+            "content": "An error occurred processing your request"
+        }), 500
 
 @app.route('/api/appointments', methods=['GET'])
 def api_appointments():
-    return jsonify({"appointments": view_appointments()})
+    try:
+        return jsonify({"appointments": view_appointments()})
+    except Exception as e:
+        logger.error(f"API appointments error: {str(e)}")
+        return jsonify({"error": "Failed to fetch appointments"}), 500
 
 @app.route('/api/appointments/book', methods=['POST'])
 def api_book_appointment():
-    data = request.json
-    result = book_appointment(
-        name=data.get('name'),
-        address=data.get('address'),
-        date=data.get('date'),
-        time=data.get('time')
-    )
-    
-    # Return appropriate status code
-    if result.get('status') == 'error':
-        return jsonify(result), 400
-    
-    return jsonify(result)
+    try:
+        data = request.json
+        result = book_appointment(
+            name=data.get('name'),
+            address=data.get('address'),
+            date=data.get('date'),
+            time=data.get('time')
+        )
+        
+        # Return appropriate status code
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+        
+        logger.info(f"Appointment booked: {result.get('appointment_id')}")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"API book appointment error: {str(e)}")
+        return jsonify({"status": "error", "message": "Failed to book appointment"}), 500
 
 @app.route('/api/appointments/cancel', methods=['POST'])
 def api_cancel_appointment():
-    data = request.json
-    result = cancel_appointment(appointment_id=data.get('appointment_id'))
-    return jsonify(result)
+    try:
+        data = request.json
+        result = cancel_appointment(appointment_id=data.get('appointment_id'))
+        logger.info(f"Appointment cancelled: {data.get('appointment_id')}")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"API cancel appointment error: {str(e)}")
+        return jsonify({"status": "error", "message": "Failed to cancel appointment"}), 500
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Resource not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(e):
+    logger.error(f"Internal server error: {str(e)}")
+    return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # Get port from environment variable (Render provides this)
+    port = int(os.getenv('PORT', 5000))
+    
+    logger.info(f"Starting Pare AI Chatbot on port {port}")
+    logger.info(f"Environment: {'Production' if not app.config['DEBUG'] else 'Development'}")
+    
+    # For local development only - Render uses gunicorn via Procfile
+    app.run(host='0.0.0.0', port=port, debug=False)
