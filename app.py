@@ -32,19 +32,20 @@ app.config['DEBUG'] = False
 app.config['PROPAGATE_EXCEPTIONS'] = True
 
 # Configure Gemini API
+# Configure Gemini API
 api_key = os.getenv('GEMINI_API_KEY', '').strip()
 if not api_key:
     logger.error("GEMINI_API_KEY not found in environment variables!")
-    raise ValueError("GEMINI_API_KEY not found! Please set it in environment variables")
-
-logger.info(f"API Key loaded successfully (length: {len(api_key)} characters)")
-
-try:
-    client = genai.Client(api_key=api_key)
-    logger.info("Gemini API configured successfully")
-except Exception as e:
-    logger.error(f"Failed to configure Gemini API: {str(e)}")
-    raise
+    # Don't crash on startup - handle gracefully in routes
+    client = None
+else:
+    logger.info(f"API Key loaded successfully (length: {len(api_key)} characters)")
+    try:
+        client = genai.Client(api_key=api_key)
+        logger.info("Gemini API configured successfully")
+    except Exception as e:
+        logger.error(f"Failed to configure Gemini API: {str(e)}")
+        client = None
 
 # Global Data Storage
 APPOINTMENTS: List[Dict] = []
@@ -215,6 +216,8 @@ def process_tool_call(response_text: str) -> Optional[Dict[str, Any]]:
 
 def chat(user_input: str) -> Dict[str, Any]:
     """Main chat function using new google-genai SDK"""
+    if not client:
+        return {"type": "error", "content": "API key not configured. Please set GEMINI_API_KEY.", "language": "en"}
     try:
         logger.info(f"Processing chat request: {user_input[:50]}...")
         full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {user_input}\n\nAssistant:"
@@ -250,6 +253,9 @@ def chat(user_input: str) -> Dict[str, Any]:
 
 def chat_stream(user_input: str):
     """Streaming chat function using new google-genai SDK"""
+    if not client:
+        yield f"data: {json.dumps({'done': True, 'result': {'type': 'error', 'content': 'API key not configured. Please set GEMINI_API_KEY.', 'language': 'en'}})}\n\n"
+        return
     try:
         logger.info(f"Processing streaming chat request: {user_input[:50]}...")
         full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {user_input}\n\nAssistant:"
@@ -291,10 +297,11 @@ def index():
 
 @app.route('/health')
 def health_check():
-    """Health check endpoint for Render"""
+    """Health check endpoint"""
     return jsonify({
         "status": "healthy",
         "service": "Pare AI Chatbot",
+        "api_configured": client is not None,
         "timestamp": datetime.datetime.now().isoformat()
     }), 200
 
