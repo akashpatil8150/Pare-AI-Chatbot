@@ -1,4 +1,3 @@
-// Chat functionality with streaming support
 function sendMessage() {
     const input = document.getElementById('messageInput');
     const message = input.value.trim();
@@ -7,11 +6,24 @@ function sendMessage() {
     
     addUserMessage(message);
     input.value = '';
-    
     showTypingIndicator();
-    
-    // Use streaming for faster perceived response
-    sendMessageWithStreaming(message);
+
+    // Use non-streaming for reliability (avoids double API calls)
+    fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message, stream: false })
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideTypingIndicator();
+        handleBotResponse(data);
+    })
+    .catch(err => {
+        hideTypingIndicator();
+        addBotMessage('Sorry, something went wrong. Please try again.');
+        console.error('Error:', err);
+    });
 }
 
 function sendMessageWithStreaming(message) {
