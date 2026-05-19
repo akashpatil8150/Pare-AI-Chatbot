@@ -32,7 +32,7 @@ app.config['DEBUG'] = False
 app.config['PROPAGATE_EXCEPTIONS'] = True
 
 # Configure Gemini API
-api_key = os.getenv('GEMINI_API_KEY')
+api_key = os.getenv('GEMINI_API_KEY', '').strip()
 if not api_key:
     logger.error("GEMINI_API_KEY not found in environment variables!")
     raise ValueError("GEMINI_API_KEY not found! Please set it in environment variables")
