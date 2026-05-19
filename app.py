@@ -422,11 +422,12 @@ def internal_error(e):
     return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
-    # Get port from environment variable (Render provides this)
-    port = int(os.getenv('PORT', 5000))
-    
+    # Hugging Face Spaces requires port 7860
+    # Render uses $PORT env variable
+    # Local dev defaults to 5000
+    port = int(os.getenv('PORT', 7860))
+
     logger.info(f"Starting Pare AI Chatbot on port {port}")
     logger.info(f"Environment: {'Production' if not app.config['DEBUG'] else 'Development'}")
-    
-    # For local development only - Render uses gunicorn via Procfile
+
     app.run(host='0.0.0.0', port=port, debug=False)

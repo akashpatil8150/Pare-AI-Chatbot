@@ -1,3 +1,13 @@
+---
+title: Pare AI Chatbot
+emoji: 🏢
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Pare AI Chatbot 🏢
 
 An intelligent AI-powered chatbot for Pare Interior & Exterior Solutions. Built with Flask and Google Gemini AI, this chatbot helps customers learn about products and book appointments with real-time slot management.

@@ -1,4 +1,4 @@
-# Environment variables (contains API keys)
+# Environment variables (contains API keys - NEVER commit this)
 .env
 
 # Virtual environment
