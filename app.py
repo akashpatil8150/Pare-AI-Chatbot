@@ -61,7 +61,7 @@ Tools: book_appointment(name,address,date,time), cancel_appointment(id)
 
 Brief answers only.'''
 
-MODEL_NAME = "gemini-1.5-flash-latest"
+MODEL_NAME = "gemini-2.0-flash"
 
 GENERATION_CONFIG = types.GenerateContentConfig(
     temperature=0.2,
