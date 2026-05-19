@@ -4,7 +4,8 @@ import json
 import random
 import datetime
 from typing import Dict, List, Any, Optional
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 import os
 import logging
@@ -36,11 +37,10 @@ if not api_key:
     logger.error("GEMINI_API_KEY not found in environment variables!")
     raise ValueError("GEMINI_API_KEY not found! Please set it in environment variables")
 
-# Log API key status (without exposing the key)
 logger.info(f"API Key loaded successfully (length: {len(api_key)} characters)")
 
 try:
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
     logger.info("Gemini API configured successfully")
 except Exception as e:
     logger.error(f"Failed to configure Gemini API: {str(e)}")
@@ -60,16 +60,14 @@ Tools: book_appointment(name,address,date,time), cancel_appointment(id)
 
 Brief answers only.'''
 
-model = genai.GenerativeModel(
-    "models/gemini-flash-lite-latest",
-    generation_config={
-        "temperature": 0.2,  # Very low for fastest responses
-        "top_p": 0.8,
-        "top_k": 5,  # Minimal choices for speed
-        "max_output_tokens": 100,  # Very short responses
-    }
-)
+MODEL_NAME = "gemini-2.0-flash-lite"
 
+GENERATION_CONFIG = types.GenerateContentConfig(
+    temperature=0.2,
+    top_p=0.8,
+    top_k=5,
+    max_output_tokens=100,
+)
 # Tool Functions
 def validate_time_slot(time: str) -> tuple[bool, str]:
     """Validate if time slot is within business hours and in correct format"""
@@ -216,120 +214,74 @@ def process_tool_call(response_text: str) -> Optional[Dict[str, Any]]:
         }
 
 def chat(user_input: str) -> Dict[str, Any]:
-    """Main chat function with optimized timeout"""
+    """Main chat function using new google-genai SDK"""
     try:
         logger.info(f"Processing chat request: {user_input[:50]}...")
         full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {user_input}\n\nAssistant:"
-        
-        # Single attempt with very short timeout for speed
-        response = model.generate_content(
-            full_prompt,
-            request_options={"timeout": 10}
+
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=full_prompt,
+            config=GENERATION_CONFIG,
         )
-        
-        # Better response handling
-        if not response.candidates:
-            logger.warning("No response candidates generated")
+
+        if not response.text:
+            logger.warning("Empty response from Gemini")
             return {
                 "type": "error",
                 "content": "No response generated. Please try again.",
                 "language": "en"
             }
-        
-        candidate = response.candidates[0]
-        
-        # Check if response was blocked or empty
-        if not candidate.content or not candidate.content.parts:
-            logger.warning("Response blocked or empty")
-            return {
-                "type": "error",
-                "content": "Response blocked or empty. Please rephrase your question.",
-                "language": "en"
-            }
-        
-        response_text = candidate.content.parts[0].text.strip()
+
+        response_text = response.text.strip()
         processed_response = process_tool_call(response_text)
         logger.info("Chat request processed successfully")
         return processed_response
-                
+
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Chat error: {error_msg}")
         if "429" in error_msg or "quota" in error_msg.lower():
-            return {
-                "type": "error",
-                "content": "API quota exceeded. Please wait and try again.",
-                "language": "en"
-            }
-        elif "504" in error_msg or "deadline" in error_msg.lower() or "timeout" in error_msg.lower():
-            return {
-                "type": "error",
-                "content": "Response too slow. Try a shorter question or wait a moment.",
-                "language": "en"
-            }
+            return {"type": "error", "content": "API quota exceeded. Please wait and try again.", "language": "en"}
+        elif "timeout" in error_msg.lower() or "deadline" in error_msg.lower():
+            return {"type": "error", "content": "Response too slow. Try a shorter question.", "language": "en"}
         else:
-            return {
-                "type": "error",
-                "content": f"Error: {error_msg}",
-                "language": "en"
-            }
+            return {"type": "error", "content": f"Error: {error_msg}", "language": "en"}
 
 def chat_stream(user_input: str):
-    """Streaming chat function for real-time responses"""
+    """Streaming chat function using new google-genai SDK"""
     try:
         logger.info(f"Processing streaming chat request: {user_input[:50]}...")
         full_prompt = f"{SYSTEM_PROMPT}\n\nUser: {user_input}\n\nAssistant:"
-        
-        response = model.generate_content(
-            full_prompt,
-            stream=True,
-            request_options={"timeout": 10}
-        )
-        
+
         accumulated_text = ""
-        for chunk in response:
-            if chunk.candidates and chunk.candidates[0].content.parts:
-                text = chunk.candidates[0].content.parts[0].text
-                if text:
-                    accumulated_text += text
-                    yield f"data: {json.dumps({'chunk': text})}\n\n"
-        
-        # Process complete response for tool calls
+        for chunk in client.models.generate_content_stream(
+            model=MODEL_NAME,
+            contents=full_prompt,
+            config=GENERATION_CONFIG,
+        ):
+            if chunk.text:
+                accumulated_text += chunk.text
+                yield f"data: {json.dumps({'chunk': chunk.text})}\n\n"
+
         if accumulated_text:
             processed = process_tool_call(accumulated_text)
             yield f"data: {json.dumps({'done': True, 'result': processed})}\n\n"
             logger.info("Streaming chat request completed successfully")
         else:
-            error_response = {
-                "type": "error",
-                "content": "No response generated. Please try again.",
-                "language": "en"
-            }
-            yield f"data: {json.dumps({'done': True, 'result': error_response})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'result': {'type': 'error', 'content': 'No response generated.', 'language': 'en'}})}\n\n"
             logger.warning("Streaming chat generated no response")
-                
+
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Streaming chat error: {error_msg}")
         if "429" in error_msg or "quota" in error_msg.lower():
-            error_response = {
-                "type": "error",
-                "content": "API quota exceeded. Please wait and try again.",
-                "language": "en"
-            }
-        elif "504" in error_msg or "deadline" in error_msg.lower() or "timeout" in error_msg.lower():
-            error_response = {
-                "type": "error",
-                "content": "Response too slow. Try a shorter question or wait a moment.",
-                "language": "en"
-            }
+            content = "API quota exceeded. Please wait and try again."
+        elif "timeout" in error_msg.lower() or "deadline" in error_msg.lower():
+            content = "Response too slow. Try a shorter question."
         else:
-            error_response = {
-                "type": "error",
-                "content": f"Error: {error_msg}",
-                "language": "en"
-            }
-        yield f"data: {json.dumps({'done': True, 'result': error_response})}\n\n"
+            content = f"Error: {error_msg}"
+        yield f"data: {json.dumps({'done': True, 'result': {'type': 'error', 'content': content, 'language': 'en'}})}\n\n"
 
 # Routes
 @app.route('/')
